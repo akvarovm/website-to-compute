@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rifa Comedor - Asientos</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+<style>
+*{box-sizing:border-box;}
+body{font-family:'Roboto',sans-serif;margin:0;padding:15px;background:#f8f9fa;color:#202124;}
+.top-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:15px;gap:8px;}
+.search-box{background:white;padding:6px 10px;border-radius:24px;display:flex;align-items:center;border:1px solid #dadce0;flex:1;min-width:120px;}
+.search-box input{border:none;outline:none;width:100%;font-size:14px;background:transparent;}
+.btn{padding:6px 12px;border:none;border-radius:8px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:4px;font-size:14px;}
+.btn-danger{background:#d93025;color:white;}
+.btn-success{background:#1e8e3e;color:white;}
+.btn-gray{background:#5f6368;color:white;}
+.filtros{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+.chip{padding:5px 10px;border-radius:20px;border:1px solid #dadce0;background:white;cursor:pointer;font-size:13px;}
+.chip.activo{background:#1a73e8;color:white;border-color:#1a73e8;}
+#asientos{display:grid;grid-template-columns:repeat(auto-fill,minmax(45px,1fr));gap:6px;margin-top:5px;}
+.asiento{height:45px;background:white;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid #dadce0;transition:0.2s;font-weight:500;font-size:14px;}
+.asiento:hover{transform:scale(1.05);}
+.pagadoColor{background:#1e8e3e !important;color:white !important;border:none !important;}
+.porPagarColor{background:#fbbc04 !important;color:#202124 !important;border:none !important;}
+.box{background:white;padding:10px;border-radius:12px;border:1px solid #dadce0;margin-bottom:8px;font-size:14px;}
+.pagado{border-left:4px solid #1e8e3e;}
+.nopagado{border-left:4px solid #d93025;}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(32,33,36,.6);display:none;align-items:center;justify-content:center;z-index:1000;}
+.modal-content{background:white;padding:15px;border-radius:12px;width:90%;max-width:320px;box-shadow:0 6px 18px rgba(0,0,0,0.25);}
+input[type="text"]{width:100%;padding:8px;border:1px solid #dadce0;border-radius:10px;margin-bottom:8px;background:#fafafa;font-size:14px;}
+input[type="text"]:focus{border-color:#1a73e8;background:white;outline:none;}
+</style>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="search-box">
+    <span class="material-icons" style="font-size:18px;">search</span>
+    <input type="text" id="buscador" placeholder="Buscar asiento...">
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+    <button class="btn btn-danger" onclick="limpiarTodo()">Limpiar</button>
+    <button class="btn btn-success" onclick="exportarExcel()">Exportar</button>
+    <button class="btn btn-gray" onclick="imprimirReporte()">Imprimir</button>
+  </div>
+</div>
+
+<div class="filtros">
+  <div class="chip activo" onclick="filtrar('todos')">Todos</div>
+  <div class="chip" onclick="filtrar('Pagado')">Pagados</div>
+  <div class="chip" onclick="filtrar('Por pagar')">Por pagar</div>
+  <div class="chip" onclick="filtrar('Libre')">Libres</div>
+</div>
+
+<div class="box" style="border-left:4px solid #1a73e8;">
+  <strong>Resumen:</strong> Total: <span id="total">0</span> — Monto: $<span id="monto">0</span>
+</div>
+
+<div class="box pagado"><strong>Pagados:</strong><div id="listaPagados"></div></div>
+<div class="box nopagado"><strong>Por pagar:</strong><div id="listaNoPagados"></div></div>
+
+<div id="asientos"></div>
+
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <h3 id="tituloModal">Asiento</h3>
+    <label>Nombre</label>
+    <input id="nombreInput" type="text">
+    <label>Teléfono</label>
+    <input id="telefonoInput" type="text">
+    <label>Pago</label><br>
+    <label><input type="radio" name="cond" value="Pagado" id="pago1"> Pagado</label>
+    <label><input type="radio" name="cond" value="Por pagar" id="pago2"> Por pagar</label>
+    <br><br>
+    <button class="btn btn-success" onclick="guardar()">Guardar</button>
+    <button class="btn btn-gray" onclick="cerrarModal()">Cancelar</button>
+    <br><br>
+    <button id="btnLimpiar" class="btn btn-danger" onclick="limpiarAsiento()" style="display:none;">Limpiar asiento</button>
+  </div>
+</div>
+
+<script>
+// --- CONFIGURACIÓN FIREBASE ---
+const firebaseConfig = {
+  apiKey: "TU_API_KEY",
+  authDomain: "rifa-comedor.firebaseapp.com",
+  databaseURL: "https://rifa-comedor-default-rtdb.firebaseio.com",
+  projectId: "rifa-comedor",
+  storageBucket: "rifa-comedor.appspot.com",
+  messagingSenderId: "TU_MESSAGING_ID",
+  appId: "TU_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const contenedor=document.getElementById("asientos");
+const modal=document.getElementById("modal");
+const nombreInput=document.getElementById("nombreInput");
+const telefonoInput=document.getElementById("telefonoInput");
+const btnLimpiar=document.getElementById("btnLimpiar");
+
+let asientoActual=0;
+let reservas={};
+let filtroActual="todos";
+
+db.ref("reservas").on("value", snapshot=>{
+  reservas=snapshot.val()||{};
+  render();
+});
+
+function render(){
+  contenedor.innerHTML="";
+  for(let i=1;i<=200;i++){
+    if(!pasaFiltro(i)) continue;
+    let div=document.createElement("div");
+    div.className="asiento";
+    div.textContent=i;
+    if(reservas[i]){
+      if(reservas[i].pago==="Pagado") div.classList.add("pagadoColor");
+      else div.classList.add("porPagarColor");
+    }
+    div.onclick=()=>abrirModal(i);
+    contenedor.appendChild(div);
+  }
+  actualizarResumen();
+}
+
+function pasaFiltro(i){
+  if(filtroActual==="todos") return true;
+  if(filtroActual==="Libre") return !reservas[i];
+  if(!reservas[i]) return false;
+  return reservas[i].pago===filtroActual;
+}
+
+function filtrar(tipo){
+  filtroActual=tipo;
+  document.querySelectorAll(".chip").forEach(c=>c.classList.remove("activo"));
+  document.querySelectorAll(".chip").forEach(c=>{
+    if((tipo==="todos" && c.textContent==="Todos")||
+       (tipo==="Pagado" && c.textContent==="Pagados")||
+       (tipo==="Por pagar" && c.textContent==="Por pagar")||
+       (tipo==="Libre" && c.textContent==="Libres")){c.classList.add("activo")}
+  });
+  render();
+}
+
+function abrirModal(num){
+  asientoActual=num;
+  nombreInput.value=reservas[num]?.nombre||"";
+  telefonoInput.value=reservas[num]?.telefono||"";
+  document.getElementById("pago1").checked=reservas[num]?.pago==="Pagado";
+  document.getElementById("pago2").checked=reservas[num]?.pago==="Por pagar";
+  btnLimpiar.style.display=reservas[num]?"block":"none";
+  modal.style.display="flex";
+}
+
+function cerrarModal(){ modal.style.display="none"; }
+
+function guardar(){
+  const nombre=nombreInput.value.trim();
+  const telefono=telefonoInput.value.trim();
+  const pago=document.getElementById("pago1").checked?"Pagado":
+             document.getElementById("pago2").checked?"Por pagar":"";
+  if(!nombre) return alert("Coloca un nombre.");
+  if(!pago) return alert("Selecciona pago.");
+  db.ref("reservas/"+asientoActual).set({nombre,telefono,pago});
+  cerrarModal();
+}
+
+function limpiarAsiento(){
+  if(confirm("¿Seguro deseas limpiar este asiento?")){
+    db.ref("reservas/"+asientoActual).remove();
+    cerrarModal();
+  }
+}
+
+function limpiarTodo(){
+  if(confirm("¿Seguro deseas limpiar TODOS los asientos?")){
+    db.ref("reservas").remove();
+  }
+}
+
+function actualizarResumen(){
+  let totalReservas=Object.keys(reservas).length;
+  document.getElementById("total").textContent=totalReservas;
+  document.getElementById("monto").textContent=totalReservas*2000;
+
+  let pagados=Object.keys(reservas).filter(a=>reservas[a].pago==="Pagado");
+  let noPagados=Object.keys(reservas).filter(a=>reservas[a].pago==="Por pagar");
+  document.getElementById("listaPagados").innerText=pagados.join(", ");
+  document.getElementById("listaNoPagados").innerText=noPagados.join(", ");
+}
+
+document.getElementById("buscador").addEventListener("input",e=>{
+  let val=e.target.value.trim();
+  if(!val) return render();
+  contenedor.innerHTML="";
+  for(let i=1;i<=200;i++){
+    if(!String(i).includes(val)) continue;
+    let div=document.createElement("div");
+    div.className="asiento";
+    div.textContent=i;
+    if(reservas[i]){
+      if(reservas[i].pago==="Pagado") div.classList.add("pagadoColor");
+      else div.classList.add("porPagarColor");
+    }
+    div.onclick=()=>abrirModal(i);
+    contenedor.appendChild(div);
+  }
+});
+
+function exportarExcel(){
+  let filas=["Asiento,Nombre,Telefono,Estado"];
+  for(let a in reservas) filas.push(`${a},${reservas[a].nombre},${reservas[a].telefono},${reservas[a].pago}`);
+  let blob=new Blob([filas.join("\n")],{type:"text/csv"});
+  let url=URL.createObjectURL(blob);
+  let a=document.createElement("a");
+  a.href=url;
+  a.download="reporte_asientos.csv";
+  a.click();
+}
+
+function imprimirReporte(){
+  let w=window.open("","PRINT","height=600,width=800");
+  w.document.write(`<h1>Reporte Asientos</h1>`);
+  w.document.write(`<p><strong>Total:</strong> ${Object.keys(reservas).length} — Monto: $${Object.keys(reservas).length*2000}</p>`);
+  w.document.write(`<h3>Pagados:</h3>`);
+  w.document.write(Object.keys(reservas).filter(a=>reservas[a].pago==="Pagado").join(", "));
+  w.document.write(`<h3>Por pagar:</h3>`);
+  w.document.write(Object.keys(reservas).filter(a=>reservas[a].pago==="Por pagar").join(", "));
+  w.document.close(); w.print();
+}
+</script>
+</body>
+</html>
